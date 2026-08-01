@@ -8,15 +8,32 @@ Deterministic, personalized router for the 110 messages in `dataset/messages.csv
 pip install -r requirements.txt
 python code/main.py                 # writes output.csv and dataset/output.csv
 python code/evaluation/main.py      # scores against the 30 solved samples
-python -m pytest                    # 143 tests, no network, no API key
-python -m pytest -m live            # 5 contract tests against the real OpenRouter/Groq APIs
+python -m pytest                    # 161 tests, no network, no API key
+python -m pytest -m live            # 6 contract tests against the real OpenRouter/Groq APIs
 ```
 
 `python code/main.py --help` lists `--dataset`, `--output`, `--also-write`, `--cache`,
-`--refresh-media`.
+`--refresh-media`, `--no-model`, `--adjudicate`, `--decisions`, `--refresh-decisions`.
 
 Nothing but `pytest` is required to run or evaluate. `openai` is needed only to regenerate the
 media cache (see below).
+
+The default run is frozen by `tests/golden/output_rules_only.csv`: `test_golden.py` asserts
+`--no-model` reproduces it byte-for-byte, and `scripts/diff_output.py` shows only rows that
+changed against it. `scripts/coherence_check.py` re-derives every shipped cell against the
+current build and reports zero drift on the 110 rows.
+
+### Model-in-the-loop adjudicator (ships off)
+
+An optional second pass (`--adjudicate`) offers only the default-branch digest rows to an
+OpenRouter model. It is **off by default**: the shipped run is pure rules and never calls an
+API. The model returns `{action, reason_key, grounding}`; `message_type` stays the feature
+kind, `confidence` is the reason's calibrated base, and verdicts are content-hashed into
+`cache/decisions.json` (see `router/adjudicator.py`, `router/decisions.py`). Invalid verdicts
+retry once and fall back to the rule. The 51 mute rows are decided by named rules and are
+never offered to the model, so `output.csv` cannot be changed by it. `scripts/adjudication_report.py`
+replays or refreshes the verdicts; a real run over the 27 default-branch rows escalated 5 to
+notify (package-at-gate, same-day pickup, health update, lost passport).
 
 ## Architecture
 
