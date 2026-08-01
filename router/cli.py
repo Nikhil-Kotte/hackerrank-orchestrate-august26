@@ -3,15 +3,18 @@ import csv
 import os
 import sys
 from pathlib import Path
+from typing import Callable
 
+from router.adjudicator import Adjudicator
 from router.context import Dataset
-from router.media import ByMediaType, CachedExtractor, NullExtractor
+from router.decisions import DEFAULT_DECISIONS
+from router.media import ByMediaType, CachedExtractor, Extractor, NullExtractor
 from router.pipeline import OUTPUT_COLUMNS, route_all
 
 DEFAULT_CACHE = "cache/media_text.json"
 
 
-def load_env(path=".env"):
+def load_env(path: Path | str = ".env") -> None:
     """Populate os.environ from a .env file. The real environment always wins."""
     path = Path(path)
     if not path.exists():
@@ -24,7 +27,7 @@ def load_env(path=".env"):
         os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
 
 
-def _adapter(name, build):
+def _adapter(name: str, build: Callable[[], Extractor]) -> Extractor | None:
     try:
         return build()
     except Exception as error:
@@ -32,17 +35,18 @@ def _adapter(name, build):
         return None
 
 
-def _extractor(cache_path, refresh):
-    vision = audio = None
+def _extractor(cache_path: Path | str, refresh: bool) -> CachedExtractor:
+    vision: Extractor | None = None
+    audio: Extractor | None = None
     if refresh or os.environ.get("OPENROUTER_API_KEY"):
-        def build_vision():
+        def build_vision() -> Extractor:
             from router.openrouter import OpenRouterExtractor
 
             return OpenRouterExtractor()
 
         vision = _adapter("OpenRouter", build_vision)
     if refresh or os.environ.get("GROQ_API_KEY"):
-        def build_audio():
+        def build_audio() -> Extractor:
             from router.groq import GroqExtractor
 
             return GroqExtractor()
@@ -52,7 +56,15 @@ def _extractor(cache_path, refresh):
     return CachedExtractor(inner, cache_path, refresh=refresh)
 
 
-def write_output(rows, path):
+def _adjudicator(args: argparse.Namespace) -> Adjudicator | None:
+    try:
+        return Adjudicator(cache_path=args.decisions, refresh=args.refresh_decisions)
+    except Exception as error:
+        print(f"warning: adjudicator unavailable ({error}); running rules-only", file=sys.stderr)
+        return None
+
+
+def write_output(rows: list[dict], path: Path | str) -> None:
     path = Path(path)
     if path.parent != Path(""):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -62,7 +74,7 @@ def write_output(rows, path):
         writer.writerows(rows)
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Route WhatsApp messages to notify/digest/mute")
     parser.add_argument("--dataset", default="dataset", help="directory holding the CSVs")
     parser.add_argument("--output", default="output.csv", help="where to write predictions")
@@ -77,11 +89,32 @@ def main(argv=None):
         action="store_true",
         help="re-extract media text through OpenRouter instead of replaying the cache",
     )
+    parser.add_argument(
+        "--no-model",
+        action="store_true",
+        help="force the rules-only path, bypassing any model-in-the-loop stage",
+    )
+    parser.add_argument(
+        "--adjudicate",
+        action="store_true",
+        help="offer default-branch rows to the adjudicator model (off by default)",
+    )
+    parser.add_argument(
+        "--decisions",
+        default=DEFAULT_DECISIONS,
+        help="adjudicator verdict cache",
+    )
+    parser.add_argument(
+        "--refresh-decisions",
+        action="store_true",
+        help="re-run the model instead of replaying the verdict cache",
+    )
     args = parser.parse_args(argv)
 
     load_env()
     dataset = Dataset.load(args.dataset)
-    rows = route_all(dataset, _extractor(args.cache, args.refresh_media))
+    adjudicator = _adjudicator(args) if args.adjudicate and not args.no_model else None
+    rows = route_all(dataset, _extractor(args.cache, args.refresh_media), adjudicator)
     write_output(rows, args.output)
     print(f"wrote {len(rows)} rows to {args.output}")
     # problem_statement.md points at dataset/output.csv; the submission checklist names a

@@ -72,6 +72,75 @@ You may use any language or runtime. Python, JavaScript, and TypeScript are all 
 
 ---
 
+## Running This
+
+Python 3.10+ is assumed. Install once:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Shipped run (no network)
+
+The committed `cache/media_text.json` already holds the OCR and ASR text for every media
+message, so the default run is deterministic and calls no API. It writes both `output.csv`
+and `dataset/output.csv`:
+
+```bash
+python code/main.py
+```
+
+`--no-model` forces the same rules-only path explicitly and is what `tests/test_golden.py`
+uses to freeze it. The rules-only pipeline achieves 1.000 action accuracy, 1.000 type
+accuracy, and 0.750 evidence recall on the 30 solved samples:
+
+```bash
+python code/evaluation/main.py
+```
+
+### Refreshing media text (network)
+
+To re-extract image posters and voice notes through OpenRouter, set the keys and run with
+`--refresh-media`:
+
+```bash
+export OPENROUTER_API_KEY=...   # images + voice
+export GROQ_API_KEY=...         # voice notes via Whisper (fallback)
+python code/main.py --refresh-media
+```
+
+### Regression and review tooling
+
+```bash
+python -m pytest                              # hermetic suite; no network, no keys
+python -m pytest -m live                      # live API contract tests (keys required)
+python -m pytest tests/test_golden.py         # byte-identical rules output vs the freeze
+python scripts/diff_output.py tests/golden/output_rules_only.csv output.csv   # changed rows
+python scripts/coherence_check.py             # shipped output vs the current build
+```
+
+`tests/golden/output_rules_only.csv` is the frozen rules-only output. Keep it in sync with
+the shipped `output.csv`: regenerate it only when a deliberate rules change is accepted.
+
+### Model-in-the-loop adjudicator (off by default)
+
+An optional second pass offers the default-branch digest rows to a model. It ships **off**:
+the default run above is pure rules and never calls an API. The adjudicator is arbitrated
+only by the rules' own evidence, `message_type` stays the feature kind, `confidence` is the
+reason's calibrated base, and its verdicts are content-hashed into `cache/decisions.json`:
+
+```bash
+python code/main.py --adjudicate             # OFF unless you pass this flag
+python scripts/adjudication_report.py        # replay the committed verdicts
+python scripts/adjudication_report.py --refresh-decisions   # make fresh model calls
+python -m pytest tests/test_adjudicator_live.py -m live     # one real call, schema-valid
+```
+
+The 51 mute rows are decided by named rules and are never offered to the model, so the
+submitted `output.csv` cannot be changed by it.
+
+---
+
 ## Requirements
 
 Your solution must:

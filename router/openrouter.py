@@ -1,6 +1,11 @@
 import base64
 import json
 import os
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import httpx
 
 BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "google/gemini-2.5-flash"
@@ -34,7 +39,7 @@ SCHEMA = {
 }
 
 
-def _content_part(file_path):
+def _content_part(file_path: Path) -> dict:
     encoded = base64.b64encode(file_path.read_bytes()).decode("ascii")
     if file_path.suffix.lower() in (".mp3", ".wav", ".m4a", ".ogg"):
         return {
@@ -45,7 +50,7 @@ def _content_part(file_path):
     return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}
 
 
-def _http_client():
+def _http_client() -> "httpx.Client | None":
     """Trust the OS certificate store, so TLS-intercepting proxies do not break the run."""
     try:
         import ssl
@@ -59,7 +64,7 @@ def _http_client():
 
 
 class OpenRouterExtractor:
-    def __init__(self, api_key=None, model=None):
+    def __init__(self, api_key: str | None = None, model: str | None = None) -> None:
         from openai import OpenAI
 
         api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
@@ -68,7 +73,7 @@ class OpenRouterExtractor:
         self.model = model or os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
         self.client = OpenAI(base_url=BASE_URL, api_key=api_key, http_client=_http_client())
 
-    def text_for(self, media_id, file_path):
+    def text_for(self, media_id: str, file_path: Path | None) -> str:
         if not file_path or not file_path.exists():
             return ""
         response = self.client.chat.completions.create(

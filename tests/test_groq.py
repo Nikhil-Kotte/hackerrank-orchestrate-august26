@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from router.groq import DEFAULT_MODEL, GroqExtractor
@@ -20,6 +22,16 @@ class FakeClient:
 
 def test_a_missing_key_is_refused_up_front(monkeypatch):
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
+        GroqExtractor()
+
+
+def test_the_key_check_precedes_the_openai_import(monkeypatch):
+    # A clean-room without the openai package must still fail with the key error,
+    # not a ModuleNotFoundError from `from openai import OpenAI`.
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setitem(sys.modules, "openai", None)
 
     with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
         GroqExtractor()

@@ -1,5 +1,6 @@
 import re
 
+from router.context import Dataset
 from router.retrieval import _same_context, analogous_history, wider_history
 from router.rules import Features
 
@@ -321,15 +322,15 @@ LOW_TRUST_REPORTS = 10
 MASS_FORWARD_COUNT = 3
 
 
-def _matches(patterns, text):
+def _matches(patterns: list[str], text: str) -> bool:
     return any(re.search(pattern, text) for pattern in patterns)
 
 
-def _flag(row, column):
+def _flag(row: dict | None, column: str) -> bool:
     return bool(row) and row.get(column) == "1"
 
 
-def _int(row, column, default=0):
+def _int(row: dict | None, column: str, default: int = 0) -> int:
     if not row:
         return default
     try:
@@ -338,7 +339,7 @@ def _int(row, column, default=0):
         return default
 
 
-def _reaction_history(dataset, message, candidates):
+def _reaction_history(dataset: Dataset, message: dict, candidates: list[dict]) -> dict:
     events = [dataset.event_for(message["user_id"], row["message_id"]) for row in candidates]
     events = [event for event in events if event]
     if not events:
@@ -353,7 +354,7 @@ def _reaction_history(dataset, message, candidates):
     }
 
 
-def _is_impersonation(business):
+def _is_impersonation(business: dict | None) -> bool:
     if not business or _flag(business, "verified"):
         return False
     official = business["official_domain"].strip()
@@ -363,7 +364,7 @@ def _is_impersonation(business):
     return _int(business, "domain_used_by_sender_age_days") < YOUNG_DOMAIN_DAYS
 
 
-def _is_low_trust_business(business):
+def _is_low_trust_business(business: dict | None) -> bool:
     if not business or _flag(business, "verified"):
         return False
     return (
@@ -372,7 +373,7 @@ def _is_low_trust_business(business):
     )
 
 
-def _has_relationship(business_history):
+def _has_relationship(business_history: dict | None) -> bool:
     if not business_history:
         return False
     reason = business_history["why_user_knows_account"]
@@ -381,7 +382,7 @@ def _has_relationship(business_history):
     return any(token in reason for token in TRANSACTIONAL_RELATIONSHIP_TOKENS)
 
 
-def _in_do_not_disturb(user, created_at):
+def _in_do_not_disturb(user: dict | None, created_at: str) -> bool:
     window = (user or {}).get("do_not_disturb_window", "")
     if "-" not in window or " " not in created_at:
         return False
@@ -392,7 +393,7 @@ def _in_do_not_disturb(user, created_at):
     return clock >= start or clock < end
 
 
-def _matches_interest(business_history, group_type, reactions):
+def _matches_interest(business_history: dict | None, group_type: str, reactions: dict) -> bool:
     if business_history and any(
         token in business_history["why_user_knows_account"] for token in INTEREST_TOKENS
     ):
@@ -400,7 +401,7 @@ def _matches_interest(business_history, group_type, reactions):
     return group_type == "marketplace" and reactions.get("open_rate", 0.0) >= 0.6
 
 
-def _content_kind(text, message, context):
+def _content_kind(text: str, message: dict, context: dict) -> str:
     if context["is_scam"]:
         return "scam"
     if _matches(GREETING_PATTERNS, text):
@@ -430,19 +431,9 @@ def _content_kind(text, message, context):
     return "unknown"
 
 
-def build_features(dataset, message, media_text=""):
-    text = " ".join(part for part in (message["message_text"], media_text) if part)
-    lowered = text.lower()
-    user_id = message["user_id"]
-    forwarded = int(message["forwarded_count"] or 0)
-
-    business = dataset.businesses.get(message["business_id"])
-    business_history = dataset.business_history_for(user_id, message["business_id"])
-    membership = dataset.membership_for(user_id, message["group_id"])
-    group = dataset.groups.get(message["group_id"])
-    sender_membership = dataset.membership_for(message["sender_user_id"], message["group_id"])
-    group_type = group["group_type"] if group else ""
-
+def _behavioural_signals(
+    dataset: Dataset, message: dict, text: str, sender_membership: dict | None
+) -> dict:
     # Retrieval ranks the whole user pool so evidence can cite a neighbouring conversation,
     # but behavior is only evidence about the sender it was measured on: reaction rates and
     # sender_known stay on the strict same-context rows.
@@ -451,15 +442,25 @@ def build_features(dataset, message, media_text=""):
     reactions = _reaction_history(dataset, message, same_context[:5])
     if not reactions:
         reactions = _reaction_history(dataset, message, wider_history(dataset, message))
+    return {
+        "reactions": reactions,
+        "sender_known": bool(same_context)
+        or bool(message["sender_user_id"] and sender_membership),
+        "has_sender_history": bool(reactions),
+        "evidence_count": len(same_context),
+    }
 
+
+def _risk_signals(
+    lowered: str, message: dict, business: dict | None, group_type: str, reactions: dict
+) -> dict:
     asks_for_credentials = _matches(CREDENTIAL_PATTERNS, lowered) and not _matches(
         CREDENTIAL_DISCLAIMERS, lowered
     )
     under_pressure = _matches(PRESSURE_PATTERNS, lowered)
     impersonation = _is_impersonation(business)
     reported_pressure = under_pressure and reactions.get("reported", False)
-    is_scam = asks_for_credentials or impersonation or reported_pressure
-
+    low_trust = _is_low_trust_business(business)
     # An attached poster may establish "this is an ad" only when the message has no words of
     # its own (voice notes, image-only) or its own words are already commercial. Otherwise the
     # attachment is context: msg_060 is a faculty deadline shipping an IIT flyer that "offers
@@ -476,6 +477,23 @@ def build_features(dataset, message, media_text=""):
         _matches(PROMO_PATTERNS, promo_text)
         or (group_type == "marketplace" and _matches(MARKETPLACE_PATTERNS, promo_text))
     )
+    return {
+        "asks_for_credentials": asks_for_credentials,
+        "uses_support_language": _matches(SUPPORT_LANGUAGE_PATTERNS, lowered)
+        and under_pressure,
+        "contains_routing_instruction": _matches(ROUTING_INSTRUCTION_PATTERNS, lowered),
+        "is_reported_pressure": reported_pressure,
+        "is_promotional": is_promotional,
+        "is_scam": asks_for_credentials or impersonation or reported_pressure,
+        "low_trust_business": low_trust,
+        "is_brand_impersonation": impersonation,
+        "is_feedback_request": _matches(FEEDBACK_PATTERNS, lowered),
+    }
+
+
+def _urgency_signals(
+    lowered: str, text: str, user_id: str, message: dict, forwarded: int, group_type: str
+) -> dict:
     same_day_deadline = _matches(CLOCK_DEADLINE_PATTERNS, lowered) and re.search(
         SAME_DAY_PATTERN, lowered
     )
@@ -486,8 +504,6 @@ def build_features(dataset, message, media_text=""):
     ) and not _matches(
         DEESCALATION_PATTERNS + HINGLISH_DEESCALATION_PATTERNS, lowered
     )
-
-    sender_known = bool(same_context) or bool(message["sender_user_id"] and sender_membership)
     directly_addressed = forwarded < MASS_FORWARD_COUNT and (
         bool(re.search(rf"@{re.escape(user_id)}\b", text))
         or (
@@ -506,16 +522,26 @@ def build_features(dataset, message, media_text=""):
             )
         )
     )
-
-    context = {
-        "is_scam": is_scam,
-        "is_promotional": is_promotional,
+    return {
+        "directly_addressed": directly_addressed,
+        "is_work_context": _matches(WORK_CONTEXT_PATTERNS, lowered)
+        and (group_type == "coworker" or message["conversation_type"] == "personal"),
+        "is_actionable_form": _matches(FORM_PATTERNS, lowered),
         "is_time_sensitive": is_time_sensitive,
-        "forwarded": forwarded,
-        "sender_known": sender_known,
-        "low_trust_business": _is_low_trust_business(business),
     }
 
+
+def _relationship_signals(
+    dataset: Dataset,
+    message: dict,
+    business: dict | None,
+    business_history: dict | None,
+    membership: dict | None,
+    sender_membership: dict | None,
+    group_type: str,
+    reactions: dict,
+    lowered: str,
+) -> dict:
     opted_out = bool(business_history) and (
         bool(business_history["promotions_opted_out_at"])
         or (
@@ -524,41 +550,91 @@ def build_features(dataset, message, media_text=""):
             > _int(business_history, "messages_opened_30d")
         )
     )
+    return {
+        "business_verified": _flag(business, "verified"),
+        "promotions_opted_in": bool(business_history)
+        and business_history["allows_promotions"] == "1"
+        and not opted_out,
+        "promotions_opted_out": opted_out,
+        "matches_known_interest": _matches_interest(business_history, group_type, reactions),
+        "has_transactional_relationship": _has_relationship(business_history)
+        and _matches(TRANSACTION_PATTERNS, lowered),
+        "sender_is_group_admin": bool(sender_membership)
+        and sender_membership["role"] == "admin",
+        "group_is_high_trust": group_type in HIGH_TRUST_GROUPS,
+        "group_is_school": group_type == "school_group",
+        "in_do_not_disturb": _in_do_not_disturb(
+            dataset.users.get(message["user_id"]), message["created_at"]
+        ),
+        "group_muted_by_user": _flag(membership, "group_muted_by_user"),
+    }
+
+
+def build_features(dataset: Dataset, message: dict, media_text: str = "") -> Features:
+    text = " ".join(part for part in (message["message_text"], media_text) if part)
+    lowered = text.lower()
+    user_id = message["user_id"]
+    forwarded = int(message["forwarded_count"] or 0)
+
+    business = dataset.businesses.get(message["business_id"])
+    business_history = dataset.business_history_for(user_id, message["business_id"])
+    membership = dataset.membership_for(user_id, message["group_id"])
+    group = dataset.groups.get(message["group_id"])
+    sender_membership = dataset.membership_for(message["sender_user_id"], message["group_id"])
+    group_type = group["group_type"] if group else ""
+
+    behavioural = _behavioural_signals(dataset, message, text, sender_membership)
+    risk = _risk_signals(lowered, message, business, group_type, behavioural["reactions"])
+    urgency = _urgency_signals(lowered, text, user_id, message, forwarded, group_type)
+    relationship = _relationship_signals(
+        dataset,
+        message,
+        business,
+        business_history,
+        membership,
+        sender_membership,
+        group_type,
+        behavioural["reactions"],
+        lowered,
+    )
+
+    context = {
+        "is_scam": risk["is_scam"],
+        "is_promotional": risk["is_promotional"],
+        "is_time_sensitive": urgency["is_time_sensitive"],
+        "forwarded": forwarded,
+        "sender_known": behavioural["sender_known"],
+        "low_trust_business": risk["low_trust_business"],
+    }
 
     return Features(
         content_kind=_content_kind(lowered, message, context),
-        asks_for_credentials=asks_for_credentials,
-        uses_support_language=_matches(SUPPORT_LANGUAGE_PATTERNS, lowered) and under_pressure,
-        contains_routing_instruction=_matches(ROUTING_INSTRUCTION_PATTERNS, lowered),
-        is_reported_pressure=reported_pressure,
-        directly_addressed=directly_addressed,
-        is_work_context=_matches(WORK_CONTEXT_PATTERNS, lowered)
-        and (group_type == "coworker" or message["conversation_type"] == "personal"),
-        sender_known=sender_known,
-        sender_open_rate=reactions.get("open_rate", 0.0),
-        business_verified=_flag(business, "verified"),
-        is_brand_impersonation=impersonation,
-        is_feedback_request=_matches(FEEDBACK_PATTERNS, lowered),
-        is_promotional=is_promotional,
-        promotions_opted_in=bool(business_history)
-        and business_history["allows_promotions"] == "1"
-        and not opted_out,
-        promotions_opted_out=opted_out,
-        matches_known_interest=_matches_interest(business_history, group_type, reactions),
-        has_transactional_relationship=_has_relationship(business_history)
-        and _matches(TRANSACTION_PATTERNS, lowered),
-        sender_is_group_admin=bool(sender_membership) and sender_membership["role"] == "admin",
-        group_is_high_trust=group_type in HIGH_TRUST_GROUPS,
-        group_is_school=group_type == "school_group",
-        is_actionable_form=_matches(FORM_PATTERNS, lowered),
-        is_time_sensitive=is_time_sensitive,
-        in_do_not_disturb=_in_do_not_disturb(
-            dataset.users.get(user_id), message["created_at"]
-        ),
-        prior_dismiss_rate=reactions.get("dismiss_rate", 0.0),
-        prior_muted_after=reactions.get("muted_after", False),
-        group_muted_by_user=_flag(membership, "group_muted_by_user"),
-        has_sender_history=bool(reactions),
+        asks_for_credentials=risk["asks_for_credentials"],
+        uses_support_language=risk["uses_support_language"],
+        contains_routing_instruction=risk["contains_routing_instruction"],
+        is_reported_pressure=risk["is_reported_pressure"],
+        directly_addressed=urgency["directly_addressed"],
+        is_work_context=urgency["is_work_context"],
+        sender_known=behavioural["sender_known"],
+        sender_open_rate=behavioural["reactions"].get("open_rate", 0.0),
+        business_verified=relationship["business_verified"],
+        is_brand_impersonation=risk["is_brand_impersonation"],
+        is_feedback_request=risk["is_feedback_request"],
+        is_promotional=risk["is_promotional"],
+        promotions_opted_in=relationship["promotions_opted_in"],
+        promotions_opted_out=relationship["promotions_opted_out"],
+        matches_known_interest=relationship["matches_known_interest"],
+        has_transactional_relationship=relationship["has_transactional_relationship"],
+        sender_is_group_admin=relationship["sender_is_group_admin"],
+        group_is_high_trust=relationship["group_is_high_trust"],
+        group_is_school=relationship["group_is_school"],
+        is_actionable_form=urgency["is_actionable_form"],
+        is_time_sensitive=urgency["is_time_sensitive"],
+        in_do_not_disturb=relationship["in_do_not_disturb"],
+        prior_dismiss_rate=behavioural["reactions"].get("dismiss_rate", 0.0),
+        prior_muted_after=behavioural["reactions"].get("muted_after", False),
+        group_muted_by_user=relationship["group_muted_by_user"],
+        has_sender_history=behavioural["has_sender_history"],
         daily_dismiss_ratio=dataset.daily_dismiss_ratio(user_id),
-        evidence_count=len(same_context),
+        evidence_count=behavioural["evidence_count"],
     )

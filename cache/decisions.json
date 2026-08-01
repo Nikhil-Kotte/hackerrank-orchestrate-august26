@@ -1,0 +1,194 @@
+{
+  "msg_007:3d35d2b4e0757827": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "group_information",
+    "source": "model"
+  },
+  "msg_008:1bc65ece89b5a79f": {
+    "action": "digest",
+    "grounding": "message_0296",
+    "reason_key": "business_informational",
+    "source": "model"
+  },
+  "msg_009:66130ae3b40f01e3": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "group_muted",
+    "source": "model"
+  },
+  "msg_010:b931964604c1b93c": {
+    "action": "digest",
+    "grounding": "message_0011",
+    "reason_key": "business_informational",
+    "source": "model"
+  },
+  "msg_027:9e97d7ce9979d494": {
+    "action": "digest",
+    "grounding": "message_0007",
+    "reason_key": "opted_in_promotion",
+    "source": "model"
+  },
+  "msg_027:b328aca1dd8b587c": {
+    "action": "digest",
+    "grounding": "message_0007",
+    "reason_key": "opted_in_promotion",
+    "source": "model"
+  },
+  "msg_029:a87e521b5d2df989": {
+    "action": "digest",
+    "grounding": "message_0113",
+    "reason_key": "known_interest_promotion",
+    "source": "model"
+  },
+  "msg_032:0b9e2f2550fe4c2e": {
+    "action": "digest",
+    "grounding": "message_0119",
+    "reason_key": "group_information",
+    "source": "model"
+  },
+  "msg_033:e4cb75c67a1b13a7": {
+    "action": "digest",
+    "grounding": "message_0121",
+    "reason_key": "harmless_greeting",
+    "source": "model"
+  },
+  "msg_035:fd7498012bc3ff7c": {
+    "action": "digest",
+    "grounding": "message_0281",
+    "reason_key": "business_informational",
+    "source": "model"
+  },
+  "msg_041:76bb04d2659892d4": {
+    "action": "digest",
+    "grounding": "message_0137",
+    "reason_key": "business_informational",
+    "source": "model"
+  },
+  "msg_045:d6281fbf141930d6": {
+    "action": "notify",
+    "grounding": null,
+    "reason_key": "close_contact_urgent",
+    "source": "model"
+  },
+  "msg_049:4b8b3d44b308b674": {
+    "action": "notify",
+    "grounding": "message_0154",
+    "reason_key": "business_order_update",
+    "source": "model"
+  },
+  "msg_049:55d9c71933f97900": {
+    "action": "notify",
+    "grounding": "message_0154",
+    "reason_key": "business_order_update",
+    "source": "model"
+  },
+  "msg_050:d64772c35504866f": {
+    "action": "notify",
+    "grounding": "message_0279",
+    "reason_key": "business_booking_reminder",
+    "source": "model"
+  },
+  "msg_053:5745d8e11531b313": {
+    "action": "digest",
+    "grounding": "message_0161",
+    "reason_key": "group_information",
+    "source": "model"
+  },
+  "msg_053:9e0d53c6e3f0763d": {
+    "action": "digest",
+    "grounding": "message_0411",
+    "reason_key": "trusted_no_urgency",
+    "source": "model"
+  },
+  "msg_062:455b8af3b37e380a": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "do_not_disturb",
+    "source": "model"
+  },
+  "msg_062:f88508bf88994934": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "do_not_disturb",
+    "source": "model"
+  },
+  "msg_065:1de5d67fecabd841": {
+    "action": "digest",
+    "grounding": "message_0261",
+    "reason_key": "opted_in_promotion",
+    "source": "model"
+  },
+  "msg_065:69ef22077f21c9f1": {
+    "action": "digest",
+    "grounding": "message_0261",
+    "reason_key": "opted_in_promotion",
+    "source": "model"
+  },
+  "msg_068:9109da42ea8b106d": {
+    "action": "digest",
+    "grounding": "message_0191",
+    "reason_key": "no_urgency",
+    "source": "model"
+  },
+  "msg_071:54168ba8c36c8d1f": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "group_information",
+    "source": "model"
+  },
+  "msg_083:ad9b5d126edcfb75": {
+    "action": "digest",
+    "grounding": "message_0219",
+    "reason_key": "no_urgency",
+    "source": "model"
+  },
+  "msg_089:4486724b4bf76e5d": {
+    "action": "notify",
+    "grounding": null,
+    "reason_key": "close_contact_urgent",
+    "source": "model"
+  },
+  "msg_090:62d186a3558ace47": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "unfamiliar_no_risk",
+    "source": "model"
+  },
+  "msg_092:73372fb90ba02aba": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "business_informational",
+    "source": "model"
+  },
+  "msg_093:0cee36daa8c66a76": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "do_not_disturb",
+    "source": "model"
+  },
+  "msg_096:7d130c5dc5398020": {
+    "action": "notify",
+    "grounding": null,
+    "reason_key": "close_contact_urgent",
+    "source": "model"
+  },
+  "msg_097:cc05bbece4321103": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "no_urgency",
+    "source": "model"
+  },
+  "msg_099:2f0121f1e4b65e29": {
+    "action": "digest",
+    "grounding": "message_0227",
+    "reason_key": "trusted_no_urgency",
+    "source": "model"
+  },
+  "msg_101:ec15ba52e96b4e4f": {
+    "action": "digest",
+    "grounding": null,
+    "reason_key": "do_not_disturb",
+    "source": "model"
+  }
+}

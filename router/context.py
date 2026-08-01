@@ -17,13 +17,13 @@ TABLES = [
 ]
 
 
-def _read(path):
+def _read(path: Path) -> list[dict]:
     with open(path, newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 
 class Dataset:
-    def __init__(self, tables, root):
+    def __init__(self, tables: dict, root: Path) -> None:
         self.root = Path(root)
         self.messages = tables["messages"]
         self.users = {row["user_id"]: row for row in tables["users"]}
@@ -58,28 +58,28 @@ class Dataset:
             totals[1] += int(row["notifications_dismissed"] or 0)
 
     @classmethod
-    def load(cls, root):
+    def load(cls, root: Path | str) -> "Dataset":
         root = Path(root)
         return cls({name: _read(root / f"{name}.csv") for name in TABLES}, root)
 
-    def history_for(self, user_id):
+    def history_for(self, user_id: str) -> list[dict]:
         return self._history_by_user.get(user_id, [])
 
-    def event_for(self, user_id, message_id):
+    def event_for(self, user_id: str, message_id: str) -> dict | None:
         return self._events.get((user_id, message_id))
 
-    def membership_for(self, user_id, group_id):
+    def membership_for(self, user_id: str, group_id: str) -> dict | None:
         return self._membership.get((user_id, group_id))
 
-    def business_history_for(self, user_id, business_id):
+    def business_history_for(self, user_id: str, business_id: str) -> dict | None:
         return self._business_history.get((user_id, business_id))
 
-    def daily_dismiss_ratio(self, user_id):
+    def daily_dismiss_ratio(self, user_id: str) -> float:
         """Share of all notifications this user dismissed, across the whole summary window."""
         sent, dismissed = self._daily_totals.get(user_id, (0, 0))
         return dismissed / sent if sent else 0.0
 
-    def media_path(self, media_type, media_id):
+    def media_path(self, media_type: str, media_id: str) -> Path | None:
         if media_type == "image":
             relative = self.images.get(media_id)
         elif media_type == "voice":

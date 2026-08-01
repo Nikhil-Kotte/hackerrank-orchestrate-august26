@@ -188,6 +188,9 @@ class Decision:
     rule: str
     reason: str
     confidence: float
+    # True only when the row fell through to the final digest branch of _route(); this is the
+    # marker that lets the pipeline offer such a row to the adjudicator.
+    default_branch: bool = False
 
 
 # How far calibration may move a decision off its rule's base value. Deliberately tiny: the
@@ -197,7 +200,7 @@ CALIBRATION_SPAN = 0.02
 STRONG_EVIDENCE_ROWS = 3
 
 
-def _support(features):
+def _support(features: Features) -> float:
     """How well-evidenced this decision is, in [0, 1].
 
     Two independent things make a decision trustworthy: how much history it rests on, and how
@@ -213,7 +216,13 @@ def _support(features):
     return 0.5 * volume + 0.5 * behaviour
 
 
-def _decision(action, message_type, rule, features=None):
+def _decision(
+    action: str,
+    message_type: str,
+    rule: str,
+    features: Features | None = None,
+    default_branch: bool = False,
+) -> Decision:
     reason, base = REASON_BANK[rule]
     confidence = base
     if features is not None:
@@ -230,10 +239,20 @@ def _decision(action, message_type, rule, features=None):
         rule=rule,
         reason=reason,
         confidence=confidence,
+        default_branch=default_branch,
     )
 
 
-def _credential_rule(features):
+def decision_from_key(features: Features, action: str, reason_key: str) -> Decision:
+    """Map a model verdict's {action, reason_key} onto a band-compliant decision.
+
+    message_type is the feature kind and confidence the reason's calibrated base, so a model
+    row is coherent and in-band by construction - the same invariants the rules guarantee.
+    """
+    return _decision(action, features.content_kind, reason_key, features)
+
+
+def _credential_rule(features: Features) -> str:
     if not features.sender_known:
         return "stranger_credential_request"
     if features.uses_support_language:
@@ -241,7 +260,7 @@ def _credential_rule(features):
     return "credential_request"
 
 
-def _digest_rule(features):
+def _digest_rule(features: Features) -> str:
     if features.is_promotional:
         if features.promotions_opted_in:
             return "opted_in_promotion"
@@ -261,7 +280,7 @@ def _digest_rule(features):
     return "no_urgency"
 
 
-def decide(features):
+def decide(features: Features) -> Decision:
     decision = _route(features)
     if decision.action != "notify":
         return decision
@@ -275,7 +294,7 @@ def decide(features):
     return decision
 
 
-def _route(features):
+def _route(features: Features) -> Decision:
     if features.contains_routing_instruction:
         return _decision("mute", "scam", "routing_instruction", features)
     # Impersonation outranks the generic credential check: naming the domain the brand does
@@ -337,4 +356,6 @@ def _route(features):
         and features.daily_dismiss_ratio >= HEAVY_DISMISSER_RATIO
     ):
         return _decision("mute", features.content_kind, "heavy_dismisser_promotion", features)
-    return _decision("digest", features.content_kind, _digest_rule(features))
+    return _decision(
+        "digest", features.content_kind, _digest_rule(features), default_branch=True
+    )

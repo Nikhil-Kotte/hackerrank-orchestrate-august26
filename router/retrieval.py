@@ -1,14 +1,16 @@
 import re
 from difflib import SequenceMatcher
 
+from router.context import Dataset
+
 WORD = re.compile(r"[a-z0-9]+")
 
 
-def _tokens(text):
+def _tokens(text: str | None) -> set[str]:
     return set(WORD.findall((text or "").lower()))
 
 
-def similarity(left, right):
+def similarity(left: str | None, right: str | None) -> float:
     left_tokens, right_tokens = _tokens(left), _tokens(right)
     if not left_tokens or not right_tokens:
         return 0.0
@@ -17,7 +19,7 @@ def similarity(left, right):
     return round(0.5 * jaccard + 0.5 * ratio, 6)
 
 
-def _same_context(message, row):
+def _same_context(message: dict, row: dict) -> bool:
     kind = message["conversation_type"]
     if kind == "business":
         return row["business_id"] == message["business_id"] and message["business_id"]
@@ -35,7 +37,7 @@ def _same_context(message, row):
 CONTEXT_BONUS = 0.15
 
 
-def analogous_history(dataset, message, text=None):
+def analogous_history(dataset: Dataset, message: dict, text: str | None = None) -> list[dict]:
     text = message["message_text"] if text is None else text
     candidates = [
         row
@@ -43,7 +45,7 @@ def analogous_history(dataset, message, text=None):
         if row["message_id"] != message.get("message_id")
     ]
 
-    def rank(row):
+    def rank(row: dict) -> tuple[float, str]:
         score = similarity(text, row["message_text"])
         if _same_context(message, row):
             score += CONTEXT_BONUS
@@ -52,7 +54,7 @@ def analogous_history(dataset, message, text=None):
     return sorted(candidates, key=rank)
 
 
-def has_same_context_history(dataset, message):
+def has_same_context_history(dataset: Dataset, message: dict) -> bool:
     """Whether any history shares this message's sender/business/group.
 
     Evidence is withheld entirely when nothing does - `sample_msg_052` has a byte-identical
@@ -65,7 +67,7 @@ def has_same_context_history(dataset, message):
     )
 
 
-def wider_history(dataset, message):
+def wider_history(dataset: Dataset, message: dict) -> list[dict]:
     """Same user and conversation, ignoring the sender - used when the sender is new."""
     kind = message["conversation_type"]
     if kind != "group" or not message["group_id"]:

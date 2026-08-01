@@ -8,13 +8,13 @@ from router.pipeline import route_message
 from router.rules import CONFIDENCE_BANDS
 
 
-def _ids(value):
+def _ids(value: str) -> set[str]:
     if not value or value == "none":
         return set()
     return {part.strip() for part in value.split(";") if part.strip()}
 
 
-def score(predictions, truth):
+def score(predictions: list[dict], truth: list[dict]) -> dict:
     by_id = {row["message_id"]: row for row in predictions}
     total = len(truth)
     actions = types = 0
@@ -56,7 +56,9 @@ def score(predictions, truth):
     }
 
 
-def evaluate_samples(dataset_dir="dataset", cache_path=DEFAULT_CACHE):
+def evaluate_samples(
+    dataset_dir: str = "dataset", cache_path: str = DEFAULT_CACHE
+) -> tuple[list[dict], list[dict], dict]:
     load_env()
     dataset = Dataset.load(dataset_dir)
     with open(f"{dataset_dir}/sample_messages.csv", newline="", encoding="utf-8") as handle:
@@ -66,7 +68,7 @@ def evaluate_samples(dataset_dir="dataset", cache_path=DEFAULT_CACHE):
     return predictions, truth, score(predictions, truth)
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> dict:
     parser = argparse.ArgumentParser(description="Score predictions against the solved samples")
     parser.add_argument("--dataset", default="dataset", help="directory holding the CSVs")
     parser.add_argument("--cache", default=DEFAULT_CACHE, help="media extraction cache")

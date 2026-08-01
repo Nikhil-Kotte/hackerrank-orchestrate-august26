@@ -23,7 +23,7 @@ Loads on every request. Kept short on purpose.
 - No abstractions for single-use operations.
 - No speculative features or "you might also want".
 - Read the file before modifying it. Never edit blind.
-- No docstrings or type annotations on code not being changed.
+- Type annotations on all public functions. Docstrings only where the logic is non-obvious.
 - No error handling for scenarios that cannot happen.
 - Three similar lines beat a premature abstraction.
 
