@@ -1,0 +1,6 @@
+pytest==9.0.3
+
+# Only needed for --refresh-media. The default run replays cache/media_text.json.
+openai==2.31.0
+httpx==0.28.1
+truststore==0.10.4

@@ -1,0 +1,11 @@
+{
+  "entry_points": [
+    "code/main.py"
+  ],
+  "notes": [
+    "Primary entry point is code/main.py. The generic scan also lists code/evaluation/main.py under Entry points because it matches main.py first in sort order; that file is the sample scorer, not the router.",
+    "The importable package is router/, not code/. A code/ package would shadow the stdlib code module that pdb imports, which breaks pytest at collection time. code/main.py is a thin entry-point shim kept for the AGENTS.md section 6.4 convention.",
+    "Predictions are written to dataset/output.csv, one row per message_id in dataset/messages.csv (110 rows). Columns are fixed: message_id,action,message_type,reason,confidence,evidence_message_ids.",
+    "dataset/ is organizer-provided input and is not modified by the solution apart from output.csv."
+  ]
+}
