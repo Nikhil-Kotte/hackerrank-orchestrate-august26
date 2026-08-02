@@ -22,7 +22,12 @@ def dataset():
 
 @pytest.fixture(scope="module")
 def shipped():
-    with open(ROOT / "output.csv", newline="", encoding="utf-8") as handle:
+    # output.csv is submitted as a separate artifact and is not part of code.zip, so a
+    # reviewer extracting the bundle must get a skip here rather than a collection error.
+    path = ROOT / "output.csv"
+    if not path.exists():
+        pytest.skip("output.csv is submitted separately and is not part of code.zip")
+    with open(path, newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 

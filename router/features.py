@@ -1,8 +1,39 @@
 import re
+import unicodedata
 
 from router.context import Dataset
 from router.retrieval import _same_context, analogous_history, wider_history
 from router.rules import Features
+
+# Every regex bank below is Latin and ASCII, so a trigger spelled with a lookalike from another
+# script slips past all of them. OCR produces these by accident (the poster cache already holds
+# a Greek kappa and eta inside otherwise-Latin words) and an attacker can produce them on
+# purpose. NFKC folds compatibility forms such as fullwidth digits, but leaves both homoglyphs
+# and zero-width characters alone, so those two are handled explicitly.
+CONFUSABLES = str.maketrans(
+    {
+        # Cyrillic
+        "А": "A", "В": "B", "Е": "E", "З": "3", "І": "I", "Ј": "J", "К": "K", "М": "M",
+        "Н": "H", "О": "O", "Р": "P", "С": "C", "Ѕ": "S", "Т": "T", "У": "Y", "Х": "X",
+        "а": "a", "е": "e", "і": "i", "ј": "j", "о": "o", "р": "p", "с": "c", "ѕ": "s",
+        "у": "y", "х": "x",
+        # Greek
+        "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K", "Μ": "M",
+        "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
+        "α": "a", "ο": "o", "ρ": "p", "ν": "v",
+    }
+)
+
+
+def normalize(text: str) -> str:
+    """Fold a message to the alphabet the pattern banks are written in.
+
+    Applied to the lowercased matching text only. Retrieval and the `@mention` scan keep the
+    raw string, so evidence selection is unaffected by the fold.
+    """
+    folded = unicodedata.normalize("NFKC", text).translate(CONFUSABLES)
+    return "".join(char for char in folded if unicodedata.category(char) != "Cf")
+
 
 HIGH_TRUST_GROUPS = {
     "family",
@@ -68,11 +99,17 @@ ROUTING_INSTRUCTION_PATTERNS = [
     r"disregard (all |any )?(previous|prior|the above)",
     r"mark (this |it )?(message )?(as )?(notify|urgent|important|high priority)",
     r"classify (this |it )?(as|to) ",
+    r"route (this|it) (message )?(to|as) ",
     r"you are (an? )?(ai|assistant|router|model)",
-    r"(system|assistant) (prompt|note|instruction)",
+    # `moderator` but not a bare `admin`: school and society groups post real "Admin note:"
+    # messages, and muting those would cost more than the injection shape is worth.
+    r"(system|assistant|moderator)[ :_-]*(prompt|note|instruction)",
     r"(note|metadata|instruction)s? for (the )?(notification )?router",
     r"routing (override|instruction)",
+    r"(admin|routing|rules?|filter)[ _-]*override",
     r"override (the )?(routing|rules|filter)",
+    # Asserting a routing decision the user never made is an instruction wearing a memory.
+    r"(approved|authoris|authoriz)\w* (the )?routing",
     r"\b(action|confidence|user_priority|verified_business)\s*=",
     r"do not (mute|filter|classify) this",
 ]
@@ -572,7 +609,7 @@ def _relationship_signals(
 
 def build_features(dataset: Dataset, message: dict, media_text: str = "") -> Features:
     text = " ".join(part for part in (message["message_text"], media_text) if part)
-    lowered = text.lower()
+    lowered = normalize(text).lower()
     user_id = message["user_id"]
     forwarded = int(message["forwarded_count"] or 0)
 

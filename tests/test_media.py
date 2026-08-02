@@ -84,6 +84,15 @@ def test_dispatch_falls_back_to_the_default_when_there_is_no_audio_extractor(tmp
     assert extractor.text_for("vn_004", tmp_path / "vn_004.mp3") == "caption"
 
 
+def test_a_corrupt_cache_starts_empty_without_crashing(tmp_path):
+    cache_path = tmp_path / "media_text.json"
+    cache_path.write_text("{this is not json", encoding="utf-8")
+
+    extractor = CachedExtractor(StubExtractor({}), cache_path)
+
+    assert extractor.entries == {}
+
+
 def test_the_stub_extractor_serves_the_transcripts_tests_hand_it():
     extractor = StubExtractor({"vn_001": "call me when you reach"})
 

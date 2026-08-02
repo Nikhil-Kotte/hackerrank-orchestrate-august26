@@ -54,9 +54,13 @@ class CachedExtractor:
         self.entries = self._load()
 
     def _load(self) -> dict:
-        if self.cache_path.exists():
+        if not self.cache_path.exists():
+            return {}
+        try:
             return json.loads(self.cache_path.read_text(encoding="utf-8"))
-        return {}
+        except json.JSONDecodeError:
+            print(f"warning: ignoring corrupt cache {self.cache_path}", file=sys.stderr)
+            return {}
 
     def text_for(self, media_id: str, file_path: Path | None) -> str:
         key = self._key(media_id, file_path)

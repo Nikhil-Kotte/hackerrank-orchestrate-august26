@@ -80,6 +80,11 @@ Python 3.10+ is assumed. Install once:
 pip install -r requirements.txt
 ```
 
+The Docker image needs `dataset/` present at build time: the `Dockerfile` uses `COPY . .`, and
+`dataset/` is organizer-provided rather than committed, so building from the submitted
+`code.zip` alone produces an image that fails at runtime. Extract the zip over a checkout that
+already has `dataset/`, or mount it at run time.
+
 ### Shipped run (no network)
 
 The committed `cache/media_text.json` already holds the OCR and ASR text for every media
@@ -115,12 +120,14 @@ python code/main.py --refresh-media
 python -m pytest                              # hermetic suite; no network, no keys
 python -m pytest -m live                      # live API contract tests (keys required)
 python -m pytest tests/test_golden.py         # byte-identical rules output vs the freeze
+python code/main.py --audit                   # per-run JSONL trace in cache/decision_log.jsonl
 python scripts/diff_output.py tests/golden/output_rules_only.csv output.csv   # changed rows
 python scripts/coherence_check.py             # shipped output vs the current build
 ```
 
 `tests/golden/output_rules_only.csv` is the frozen rules-only output. Keep it in sync with
 the shipped `output.csv`: regenerate it only when a deliberate rules change is accepted.
+`--audit` is off by default; the default run still writes no log and is byte-identical.
 
 ### Model-in-the-loop adjudicator (off by default)
 

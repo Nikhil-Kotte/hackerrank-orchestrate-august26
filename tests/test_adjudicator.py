@@ -32,6 +32,15 @@ def test_the_cache_key_changes_with_content_and_message_id(cache):
     assert cache.key("m1", base) != cache.key("m2", other_id)
 
 
+def test_a_corrupt_decisions_cache_starts_empty_without_crashing(tmp_path):
+    path = tmp_path / "decisions.json"
+    path.write_text("{broken", encoding="utf-8")
+
+    decisions = Decisions(path)
+
+    assert decisions.entries == {}
+
+
 def test_a_verdict_is_replayed_after_a_fresh_load(tmp_path, cache):
     context = {"message_text": "hello"}
 

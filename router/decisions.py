@@ -1,5 +1,6 @@
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 DEFAULT_DECISIONS = "cache/decisions.json"
@@ -18,9 +19,13 @@ class Decisions:
         self.entries = self._load()
 
     def _load(self) -> dict:
-        if self.path.exists():
+        if not self.path.exists():
+            return {}
+        try:
             return json.loads(self.path.read_text(encoding="utf-8"))
-        return {}
+        except json.JSONDecodeError:
+            print(f"warning: ignoring corrupt cache {self.path}", file=sys.stderr)
+            return {}
 
     def key(self, message_id: str, context: dict) -> str:
         canonical = json.dumps(

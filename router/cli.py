@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Callable
 
 from router.adjudicator import Adjudicator
+from router.agent import DEFAULT_TRACES, AgentTraceStore, EvidenceAgent, OpenRouterAgentModel
+from router.audit import DEFAULT_AUDIT_LOG, DecisionAuditor
 from router.context import Dataset
 from router.decisions import DEFAULT_DECISIONS
 from router.media import ByMediaType, CachedExtractor, Extractor, NullExtractor
@@ -64,6 +66,40 @@ def _adjudicator(args: argparse.Namespace) -> Adjudicator | None:
         return None
 
 
+class _LazyAgentModel:
+    """Builds the OpenRouter client on the first genuine cache miss.
+
+    A warm trace cache needs no network, so constructing the client up front would make
+    ``--agent`` unusable without a key and degrade it silently to rules-only. Deferring the
+    construction keeps replay offline while still reporting the failure on a real miss.
+    """
+
+    def __init__(self) -> None:
+        self._model: OpenRouterAgentModel | None = None
+        self._warned = False
+
+    def __call__(self, messages: list[dict], tools: list[dict]) -> list[dict]:
+        if self._model is None:
+            try:
+                self._model = OpenRouterAgentModel()
+            except Exception as error:
+                # Warn once, then re-raise: the loop records this as an api_error fallback, so
+                # the row keeps the rules verdict and the trace says why.
+                if not self._warned:
+                    print(f"warning: evidence agent unavailable ({error}); "
+                          "falling back to the rules verdict on uncached rows", file=sys.stderr)
+                    self._warned = True
+                raise
+        return self._model(messages, tools)
+
+
+def _agent(args: argparse.Namespace, extractor: Extractor) -> EvidenceAgent | None:
+    if args.no_model:
+        return None
+    store = AgentTraceStore(args.agent_traces, refresh=args.refresh_agent)
+    return EvidenceAgent(_LazyAgentModel(), extractor, store)
+
+
 def write_output(rows: list[dict], path: Path | str) -> None:
     path = Path(path)
     if path.parent != Path(""):
@@ -109,12 +145,35 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="re-run the model instead of replaying the verdict cache",
     )
+    parser.add_argument(
+        "--agent",
+        action="store_true",
+        help="run the evidence-gathering agent over default-branch rows (off by default)",
+    )
+    parser.add_argument(
+        "--refresh-agent",
+        action="store_true",
+        help="call the model instead of replaying the agent trace cache",
+    )
+    parser.add_argument(
+        "--agent-traces",
+        default=DEFAULT_TRACES,
+        help="agent tool-call trace cache",
+    )
+    parser.add_argument(
+        "--audit",
+        action="store_true",
+        help=f"write one JSONL trace per decision to {DEFAULT_AUDIT_LOG}",
+    )
     args = parser.parse_args(argv)
 
     load_env()
     dataset = Dataset.load(args.dataset)
+    extractor = _extractor(args.cache, args.refresh_media)
     adjudicator = _adjudicator(args) if args.adjudicate and not args.no_model else None
-    rows = route_all(dataset, _extractor(args.cache, args.refresh_media), adjudicator)
+    agent = _agent(args, extractor) if args.agent else None
+    audit = DecisionAuditor() if args.audit else None
+    rows = route_all(dataset, extractor, adjudicator, audit, agent)
     write_output(rows, args.output)
     print(f"wrote {len(rows)} rows to {args.output}")
     # problem_statement.md points at dataset/output.csv; the submission checklist names a

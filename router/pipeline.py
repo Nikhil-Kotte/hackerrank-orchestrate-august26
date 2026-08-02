@@ -1,4 +1,6 @@
 from router.adjudicator import Adjudicator, build_adjudication_context
+from router.agent import EvidenceAgent
+from router.audit import DecisionAuditor
 from router.context import Dataset
 from router.features import build_features
 from router.media import Extractor
@@ -38,6 +40,8 @@ def route_message(
     message: dict,
     extractor: Extractor,
     adjudicator: Adjudicator | None = None,
+    audit: DecisionAuditor | None = None,
+    agent: EvidenceAgent | None = None,
 ) -> dict:
     media_text = media_text_for(dataset, message, extractor)
     text = " ".join(part for part in (message["message_text"], media_text) if part)
@@ -46,16 +50,27 @@ def route_message(
     candidates = analogous_history(dataset, message, text)
 
     has_context = has_same_context_history(dataset, message)
-    # Only a row that fell through to the default digest branch is offered to the model. Safety
+    # Only a row that fell through to the default digest branch is offered to a model. Safety
     # and suppression mutes are decided by named rules and never reach it, so the 51-row mute
-    # set cannot be changed by the model. The model's grounding is honoured as evidence only
-    # when same-context history exists, matching the rules' own evidence policy.
+    # set cannot be changed by any model. The adjudicator's grounding is honoured as evidence
+    # only when same-context history exists, matching the rules' own evidence policy.
     if adjudicator is not None and decision.default_branch:
         context = build_adjudication_context(message, features, media_text, candidates[:3])
         decision, grounding = adjudicator.decision_for(features, context)
         evidence = grounding if (grounding and has_context) else _evidence(candidates, decision, has_context)
+    elif agent is not None and decision.default_branch:
+        # The evidence agent runs its own loop; its cited evidence is honoured as-is because it
+        # gathered it, and on fallback the row is byte-identical to the rules path.
+        outcome = agent.decision_for(dataset, message, features)
+        if outcome.decision is not None:
+            decision, evidence = outcome.decision, outcome.evidence
+        else:
+            evidence = _evidence(candidates, decision, has_context)
     else:
         evidence = _evidence(candidates, decision, has_context)
+
+    if audit is not None:
+        audit.record(message, features, decision, evidence)
 
     return {
         "message_id": message["message_id"],
@@ -68,9 +83,13 @@ def route_message(
 
 
 def route_all(
-    dataset: Dataset, extractor: Extractor, adjudicator: Adjudicator | None = None
+    dataset: Dataset,
+    extractor: Extractor,
+    adjudicator: Adjudicator | None = None,
+    audit: DecisionAuditor | None = None,
+    agent: EvidenceAgent | None = None,
 ) -> list[dict]:
     return [
-        route_message(dataset, message, extractor, adjudicator)
+        route_message(dataset, message, extractor, adjudicator, audit, agent)
         for message in dataset.messages
     ]
